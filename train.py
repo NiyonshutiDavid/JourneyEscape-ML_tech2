@@ -10,25 +10,22 @@ Usage:
     python train.py --policy CNN --experiment_name exp1
     python train.py --policy MLP --learning_rate 0.001 --gamma 0.95
 """
-
-import argparse
-import csv
-import json
-import os
-import time
 from datetime import datetime
 from typing import Any, Dict, Optional
 
 # Import and register ALE environments
-import ale_py
-import gymnasium as gym
-import matplotlib.pyplot as plt
+import argparse
+import os
+import json
+import csv
 import numpy as np
-import pandas as pd
-import seaborn as sns
 import torch
+import gymnasium as gym
+
 from stable_baselines3 import DQN
 from stable_baselines3.common.atari_wrappers import AtariWrapper
+from gymnasium.wrappers import GrayScaleObservation, ResizeObservation, FrameStack, TransformObservation
+from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.callbacks import (
     CallbackList,
     CheckpointCallback,
@@ -38,525 +35,464 @@ from stable_baselines3.common.env_util import make_atari_env
 from stable_baselines3.common.logger import configure
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv, VecFrameStack
+from stable_baselines3.common.evaluation import evaluate_policy
 
-# Register ALE environments with gymnasium
+# Try to register ALE envs if needed (best-effort)
 try:
-    gym.register_envs(ale_py)
+    # gymnasium provides Atari via gymnasium.make with ALE; no explicit register normally required
+    
+    pass
 except Exception as e:
     print(f"Warning: Could not register ALE environments: {e}")
 
 # Set random seeds for reproducibility
-np.random.seed(42)
-torch.manual_seed(42)
+SEED = 42
+np.random.seed(SEED)
+torch.manual_seed(SEED)
+
+# Utility functions
+def ensure_dir(path: str):
+    os.makedirs(path, exist_ok=True)
 
 
-class HyperparameterExperiment:
-    def __init__(self, experiment_name: str, base_dir: str = "experiments"):
-        self.experiment_name = experiment_name
-        self.base_dir = base_dir
-        self.results_file = os.path.join(base_dir, "hyperparameter_results.csv")
-        self.ensure_directories()
+class HyperparameterExperiment: # Logs hyperparameter results to CSV
+    def __init__(self, csv_path: str = "hyperparameter_results.csv"):
+        self.csv_path = csv_path
+        self.header = [
+            "learning_rate",
+            "gamma",
+            "batch_size",
+            "epsilon_start",
+            "epsilon_end",
+            "exploration_fraction",
+            "avg_reward",
+            "std_reward",
+            "min_reward",
+            "max_reward",
+            "avg_episode_length",
+            "total_eval_episodes",
+            "training_time_seconds",
+            "total_timesteps",
+            "policy_type",
+            "hyperparameter_set_name",
+            "experiment_name",
+            "timestamp",
+        ]
+        # create file with header if missing
+        if not os.path.exists(self.csv_path) or os.path.getsize(self.csv_path) == 0:
+            with open(self.csv_path, "w", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerow(self.header)
 
-    def ensure_directories(self):
-        """Create necessary directories."""
-        os.makedirs(self.base_dir, exist_ok=True)
-        os.makedirs("models", exist_ok=True)
-        os.makedirs("logs", exist_ok=True)
-
-    def log_experiment(self, hyperparams: Dict[str, Any], results: Dict[str, Any]):
-        """Log experiment results to CSV file."""
-        # Combine hyperparameters and results
-        row_data = {**hyperparams, **results}
-        row_data["experiment_name"] = self.experiment_name
-        row_data["timestamp"] = datetime.now().isoformat()
-
-        # Check if file exists to write header
-        file_exists = os.path.exists(self.results_file)
-
-        with open(self.results_file, "a", newline="") as csvfile:
-            fieldnames = list(row_data.keys())
-            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-
-            if not file_exists:
-                writer.writeheader()
-
-            writer.writerow(row_data)
-
-        print(f"✅ Experiment results logged to {self.results_file}")
+    def log_experiment(self, hyperparams: Dict[str, Any], results: Dict[str, Any], policy_type: str, hyperparameter_set_name: str, experiment_name: str):
+        row = [
+            hyperparams.get("learning_rate", ""),
+            hyperparams.get("gamma", ""),
+            hyperparams.get("batch_size", ""),
+            hyperparams.get("exploration_initial_eps", "") or hyperparams.get("epsilon_start", ""),
+            hyperparams.get("exploration_final_eps", "") or hyperparams.get("epsilon_end", ""),
+            hyperparams.get("exploration_fraction", ""),
+            results.get("avg_reward", ""),
+            results.get("std_reward", ""),
+            results.get("min_reward", ""),
+            results.get("max_reward", ""),
+            results.get("avg_episode_length", ""),
+            results.get("total_eval_episodes", ""),
+            results.get("training_time_seconds", ""),
+            results.get("total_timesteps", ""),
+            policy_type,
+            hyperparameter_set_name,
+            experiment_name,
+            datetime.utcnow().isoformat(),
+        ]
+        with open(self.csv_path, "a", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(row)
 
 
-class TrainingLogger:
-    def __init__(self, log_dir: str):
+class TrainingLogger: # Saves training summaries to JSON
+    def __init__(self, log_dir: str = "logs"):
         self.log_dir = log_dir
-        self.metrics = {
-            "episode_rewards": [],
-            "episode_lengths": [],
-            "training_timesteps": [],
-            "epsilon_values": [],
-        }
+        ensure_dir(self.log_dir)
 
-    def log_episode(self, reward: float, length: int, timestep: int, epsilon: float):
-        self.metrics["episode_rewards"].append(reward)
-        self.metrics["episode_lengths"].append(length)
-        self.metrics["training_timesteps"].append(timestep)
-        self.metrics["epsilon_values"].append(epsilon)
-
-    def save_metrics(self, filename: str):
-        """Save metrics to file."""
-        metrics_df = pd.DataFrame(self.metrics)
-        metrics_path = os.path.join(self.log_dir, f"{filename}_metrics.csv")
-        metrics_df.to_csv(metrics_path, index=False)
-        return metrics_path
-
-    def plot_training_curves(self, filename: str):
-        if not self.metrics["episode_rewards"]:
-            return None
-
-        fig, axes = plt.subplots(2, 2, figsize=(15, 10))
-
-        # Episode rewards
-        axes[0, 0].plot(self.metrics["episode_rewards"])
-        axes[0, 0].set_title("Episode Rewards")
-        axes[0, 0].set_xlabel("Episode")
-        axes[0, 0].set_ylabel("Reward")
-        axes[0, 0].grid(True)
-
-        # Episode lengths
-        axes[0, 1].plot(self.metrics["episode_lengths"])
-        axes[0, 1].set_title("Episode Lengths")
-        axes[0, 1].set_xlabel("Episode")
-        axes[0, 1].set_ylabel("Length")
-        axes[0, 1].grid(True)
-
-        # Epsilon decay
-        axes[1, 0].plot(self.metrics["epsilon_values"])
-        axes[1, 0].set_title("Epsilon Decay")
-        axes[1, 0].set_xlabel("Training Step")
-        axes[1, 0].set_ylabel("Epsilon")
-        axes[1, 0].grid(True)
-
-        # Reward moving average
-        if len(self.metrics["episode_rewards"]) >= 10:
-            window = min(100, len(self.metrics["episode_rewards"]) // 10)
-            moving_avg = (
-                pd.Series(self.metrics["episode_rewards"]).rolling(window=window).mean()
-            )
-            axes[1, 1].plot(moving_avg)
-            axes[1, 1].set_title(f"Reward Moving Average (window={window})")
-            axes[1, 1].set_xlabel("Episode")
-            axes[1, 1].set_ylabel("Average Reward")
-            axes[1, 1].grid(True)
-
-        plt.tight_layout()
-        plot_path = os.path.join(self.log_dir, f"{filename}_training_curves.png")
-        plt.savefig(plot_path, dpi=300, bbox_inches="tight")
-        plt.close()
-        return plot_path
+    def save_summary(self, path: str, data: Dict[str, Any]):
+        ensure_dir(os.path.dirname(path) or ".")
+        with open(path, "w") as f:
+            json.dump(data, f, indent=2)
 
 
-def create_environment(env_name: str = "ALE/JourneyEscape-v5", n_envs: int = 1):
+def create_environment(env_name: str = "ALE/JourneyEscape-v5", n_envs: int = 1, seed: int = SEED):
     """
     Create and wrap the Atari environment with proper ALE registration.
+    Returns a VecFrameStack-wrapped vectorized environment and the resolved env id.
     """
-    print(f"🎮 Creating {env_name} environment...")
-
-    # Ensure ALE is properly registered
-    try:
-        gym.register_envs(ale_py)
-        print("✅ ALE environments registered successfully")
-    except Exception as e:
-        print(f"⚠️  Warning during ALE registration: {e}")
-
-    # Try alternative environment names if the primary fails
     env_alternatives = [
         env_name,
-        "JourneyEscape-v5",
-        "JourneyEscape-v4",
-        "JourneyEscapeNoFrameskip-v4",
+        env_name.replace("ALE/", ""),
+        env_name.replace("-v5", "-v4"),
+        env_name.replace("-v5", ""),
     ]
 
-    env = None
-    successful_env_name = None
-
-    for alt_env_name in env_alternatives:
+    last_exc = None
+    for alt in dict.fromkeys(env_alternatives):
         try:
-            print(f"   Trying environment: {alt_env_name}")
-
-            # Create the environment using make_atari_env which handles wrappers
-            env = make_atari_env(
-                alt_env_name,
-                n_envs=n_envs,
-                seed=42,
-                wrapper_kwargs={
-                    "frame_skip": 4,
-                    "screen_size": 84,
-                    "terminal_on_life_loss": False,
-                    "clip_reward": False,
-                },
-            )
-
-            successful_env_name = alt_env_name
-            print(f"✅ Successfully created environment: {alt_env_name}")
-            break
-
+            print(f"Creating env: {alt} (n_envs={n_envs})")
+            vec_env = make_atari_env(alt, n_envs=n_envs, seed=seed)
+            vec_env = VecFrameStack(vec_env, n_stack=4)
+            return vec_env, alt
         except Exception as e:
-            print(f"   ❌ Failed to create {alt_env_name}: {e}")
-            continue
+            last_exc = e
+            print(f"Failed to create {alt}: {e}")
+    raise RuntimeError(f"Could not create any env variant. Last error: {last_exc}")
 
-    if env is None:
-        raise RuntimeError(
-            f"Could not create any JourneyEscape environment variant. "
-            f"Make sure ALE and Atari ROMs are properly installed."
-        )
 
-    # Add frame stacking for temporal information
-    env = VecFrameStack(env, n_stack=4)
+def create_dqn_agent(
+    env, policy_type: str, hyperparams: Dict[str, Any], tensorboard_log: Optional[str] = None
+):
+    """
+    Instantiate a stable-baselines3 DQN model with given hyperparameters.
+    policy_type: 'CNN' or 'MLP' -> mapped to 'CnnPolicy' or 'MlpPolicy'
+    hyperparams keys used: learning_rate, gamma, batch_size, exploration_fraction,
+                           exploration_initial_eps, exploration_final_eps, buffer_size, learning_starts
+    """
+    policy = "CnnPolicy" if policy_type.lower().startswith("c") else "MlpPolicy"
 
-    print(f"✅ Environment created successfully!")
-    print(f"   Environment: {successful_env_name}")
-    print(f"   Number of parallel environments: {n_envs}")
-    print(f"   Observation space: {env.observation_space}")
-    print(f"   Action space: {env.action_space}")
+    model_kwargs = dict(
+        policy=policy,
+        env=env,
+        learning_rate=hyperparams.get("learning_rate", 1e-4),
+        gamma=hyperparams.get("gamma", 0.99),
+        batch_size=int(hyperparams.get("batch_size", 32)),
+        buffer_size=int(hyperparams.get("buffer_size", 100000)),
+        learning_starts=int(hyperparams.get("learning_starts", 10000)),
+        exploration_fraction=float(hyperparams.get("exploration_fraction", 0.1)),
+        exploration_initial_eps=float(hyperparams.get("exploration_initial_eps", 1.0)),
+        exploration_final_eps=float(hyperparams.get("exploration_final_eps", 0.05)),
+        tensorboard_log=tensorboard_log,
+        verbose=1,
+        seed=SEED,
+    )
+
+    model = DQN(**model_kwargs)
+    return model
+def to_numpy(obs):
+    # For LazyFrames, convert to numpy array safely for SB3 predictions
+    try:
+        return np.array(obs)
+    except Exception:
+        return obs
+
+def train_agent(
+    env_id: str,
+    policy_type: str,
+    hyperparams: Dict[str, Any],
+    total_timesteps: int,
+    experiment_name: str,
+    save_dir: str = "models",
+    tensorboard_dir: str = "logs/tensorboard",
+    eval_episodes: int = 10,
+):
+    """
+    Train a DQN agent for a given Atari environment, using a specified policy type and hyperparameters.
+
+    Parameters:
+    env_id (str): Atari environment ID.
+    policy_type (str): 'CNN' or 'MLP' -> mapped to 'CnnPolicy' or 'MlpPolicy'.
+    hyperparams (Dict[str, Any]): Hyperparameter dictionary with keys learning_rate, gamma, batch_size, exploration_fraction,
+        exploration_initial_eps, exploration_final_eps, buffer_size, learning_starts, n_envs, eval_freq, checkpoint_freq.
+    total_timesteps (int): Total training timesteps.
+    experiment_name (str): Experiment name (used for saving models and logging).
+    save_dir (str, optional): Directory for saving models (default: 'models').
+    tensorboard_dir (str, optional): Directory for saving tensorboard logs (default: 'logs/tensorboard').
+    eval_episodes (int, optional): Number of evaluation episodes (default: 10).
+
+    Returns:
+        model (DQN): Trained DQN agent.
+        results (Dict[str, Any]): Dictionary containing evaluation results and experiment metadata.
+    """
+    ensure_dir(save_dir)
+    ensure_dir(tensorboard_dir)
+
+    train_env, used_env_id = create_environment(env_id, n_envs=int(hyperparams.get("n_envs", 8)))
+    eval_env = make_atari_env(used_env_id, n_envs=1, seed=SEED)
+    eval_env = VecFrameStack(eval_env, n_stack=4)
+
+    tb_log_path = os.path.join(tensorboard_dir, experiment_name)
+    model = create_dqn_agent(train_env, policy_type, hyperparams, tensorboard_log=tensorboard_dir)
+
+    # callbacks
+    ckpt_dir = os.path.join(save_dir, experiment_name, "checkpoints")
+    ensure_dir(ckpt_dir)
+    checkpoint_callback = CheckpointCallback(save_freq=int(hyperparams.get("checkpoint_freq", 100000)), save_path=ckpt_dir, name_prefix="dqn_ckpt")
+    eval_save_dir = os.path.join(save_dir, experiment_name, "eval")
+    ensure_dir(eval_save_dir)
+    eval_callback = EvalCallback(
+        eval_env,
+        best_model_save_path=eval_save_dir,
+        log_path=eval_save_dir,
+        eval_freq=int(hyperparams.get("eval_freq", 50000)),
+        n_eval_episodes=eval_episodes,
+        deterministic=True,
+        render=False,
+    )
+    callbacks = CallbackList([checkpoint_callback, eval_callback])
+
+    print(f"Starting training: env={used_env_id}, policy={policy_type}, timesteps={total_timesteps}, experiment={experiment_name}")
+    start = datetime.utcnow()
+    model.learn(total_timesteps=total_timesteps, callback=callbacks, tb_log_name=experiment_name)
+    duration = (datetime.utcnow() - start).total_seconds()
+
+    # primary model save
+    final_model_path = os.path.join(save_dir, "dqn_model.zip")
+    # also save per-experiment copy
+    exp_model_path = os.path.join(save_dir, f"{experiment_name}_dqn_model.zip")
+    model.save(final_model_path)
+    model.save(exp_model_path)
+    print(f"Saved final model to: {final_model_path} and {exp_model_path}")
+
+    eval_single = create_eval_env(used_env_id)
+    # evaluate_policy returns (mean, std) for SB3's evaluate_policy
+    avg_reward, std_reward = evaluate_policy(model, eval_single, n_eval_episodes=eval_episodes, deterministic=True, return_episode_rewards=False)
+    # manually collect per-episode metrics for min/max and lengths
+    episode_rewards = []
+    episode_lengths = []
+    for _ in range(eval_episodes):
+        obs, _ = eval_single.reset()
+        obs = to_numpy(obs)
+        done = False
+        ep_r = 0.0
+        ep_len = 0
+        while True:
+            action, _ = model.predict(to_numpy(obs), deterministic=True)
+            obs, reward, terminated, truncated, info = eval_single.step(int(action))
+            ep_r += float(reward)
+            ep_len += 1
+            if terminated or truncated:
+                break
+        episode_rewards.append(ep_r)
+        episode_lengths.append(ep_len)
+
+    eval_single.close()
+
+    results = {
+        "avg_reward": float(np.mean(episode_rewards)),
+        "std_reward": float(np.std(episode_rewards)),
+        "min_reward": float(np.min(episode_rewards)),
+        "max_reward": float(np.max(episode_rewards)),
+        "avg_episode_length": float(np.mean(episode_lengths)),
+        "total_eval_episodes": int(eval_episodes),
+        "training_time_seconds": float(duration),
+        "total_timesteps": int(total_timesteps),
+    }
+
+    # append to hyperparameter_results.csv
+    csv_path = "hyperparameter_results.csv"
+    header = [
+        "learning_rate",
+        "gamma",
+        "batch_size",
+        "epsilon_start",
+        "epsilon_end",
+        "exploration_fraction",
+        "avg_reward",
+        "std_reward",
+        "min_reward",
+        "max_reward",
+        "avg_episode_length",
+        "total_eval_episodes",
+        "training_time_seconds",
+        "total_timesteps",
+        "policy_type",
+        "hyperparameter_set_name",
+        "experiment_name",
+        "timestamp",
+    ]
+    row = [
+        hyperparams.get("learning_rate", ""),
+        hyperparams.get("gamma", ""),
+        hyperparams.get("batch_size", ""),
+        hyperparams.get("exploration_initial_eps", ""),
+        hyperparams.get("exploration_final_eps", ""),
+        hyperparams.get("exploration_fraction", ""),
+        results["avg_reward"],
+        results["std_reward"],
+        results["min_reward"],
+        results["max_reward"],
+        results["avg_episode_length"],
+        results["total_eval_episodes"],
+        results["training_time_seconds"],
+        results["total_timesteps"],
+        policy_type,
+        hyperparams.get("hyperparameter_set_name", "manual"),
+        experiment_name,
+        datetime.utcnow().isoformat(),
+    ]
+
+    write_header = not os.path.exists(csv_path) or os.path.getsize(csv_path) == 0
+    with open(csv_path, "a", newline="") as f:
+        writer = csv.writer(f)
+        if write_header:
+            writer.writerow(header)
+        writer.writerow(row)
+
+    print(f"Appended results to {csv_path}")
+    return model, results
+
+
+def create_eval_env(env_id: str = "ALE/JourneyEscape-v5", seed: int = SEED):
+    """
+    Create a single-environment Monitor-wrapped environment for evaluation.
+    Applies the SAME preprocessing as the training environment.
+    """
+    # Try without ALE wrapper fallback
+    try:
+        env = gym.make(env_id)
+    except Exception:
+        env = gym.make(env_id.replace("ALE/", ""))
+
+
+    # 1. Resize the frame to 84×84 (standard for DQN)
+    env = ResizeObservation(env, (84, 84))
+
+    # 2. Convert to grayscale
+    env = GrayScaleObservation(env)
+
+    # 3. Stack 4 frames (equivalent to your Atari FrameStackingWrapper)
+    env = FrameStack(env, num_stack=4)
+    # Convert LazyFrames -> numpy arrays so SB3's predict doesn't choke on LazyFrames
+    env = TransformObservation(env, to_numpy)
+
+    # 4. Record stats (episode rewards, lengths)
+    env = Monitor(env)
+
+    # SEED for reproducibility
+    env.reset(seed=seed)
 
     return env
 
 
-def create_dqn_agent(
-    env, policy_type: str, hyperparams: Dict[str, Any], tensorboard_log: str
-):
-    # Policy mapping
-    policy_map = {"CNN": "CnnPolicy", "MLP": "MlpPolicy"}
-
-    policy = policy_map.get(policy_type.upper(), "CnnPolicy")
-
-    # DQN configuration
-    dqn_config = {
-        "policy": policy,
-        "env": env,
-        "learning_rate": hyperparams.get("learning_rate", 1e-4),
-        "gamma": hyperparams.get("gamma", 0.99),
-        "batch_size": hyperparams.get("batch_size", 32),
-        "buffer_size": hyperparams.get("buffer_size", 100000),
-        "learning_starts": hyperparams.get("learning_starts", 10000),
-        "target_update_interval": hyperparams.get("target_update_interval", 1000),
-        "train_freq": hyperparams.get("train_freq", 4),
-        "gradient_steps": hyperparams.get("gradient_steps", 1),
-        "exploration_fraction": hyperparams.get("exploration_fraction", 0.1),
-        "exploration_initial_eps": hyperparams.get("epsilon_start", 1.0),
-        "exploration_final_eps": hyperparams.get("epsilon_end", 0.05),
-        "max_grad_norm": hyperparams.get("max_grad_norm", 10),
-        "tensorboard_log": tensorboard_log,
-        "verbose": 1,
-        "seed": 42,
-        "device": "cuda" if torch.cuda.is_available() else "cpu",
-    }
-
-    agent = DQN(**dqn_config)
-
-    return agent, dqn_config
-
-
-def train_agent(agent, total_timesteps: int, experiment_name: str, save_path: str):
-    """Train the DQN agent with callbacks and monitoring."""
-    print(" Starting training ...")
-
-    # Setup logging directory
-    log_dir = f"logs/{experiment_name}"
-    os.makedirs(log_dir, exist_ok=True)
-
-    # Configure callbacks
-    checkpoint_callback = CheckpointCallback(
-        save_freq=10000,
-        save_path=f"models/checkpoints_{experiment_name}/",
-        name_prefix="dqn_checkpoint",
-    )
-
-    # Combine callbacks
-    callbacks = CallbackList([checkpoint_callback])
-
-    # Start training
-    start_time = time.time()
-    agent.learn(total_timesteps=total_timesteps, callback=callbacks, progress_bar=True)
-    training_time = time.time() - start_time
-
-    # Save the final model
-    agent.save(save_path)
-    print(" Model saved to {save_path}")
-
-    return training_time
-
-
 def evaluate_agent(agent, env, n_eval_episodes: int = 10):
-    """Evaluate the trained agent's performance."""
-    print(f" Evaluating agent over {n_eval_episodes} episodes...")
+    """
+    Evaluate the agent on the environment.
 
-    episode_rewards = []
-    episode_lengths = []
+    Args:
+        agent (stable_baselines3.BaseRLModel): The agent to evaluate.
+        env (gym.Env): The environment to evaluate on.
+        n_eval_episodes (int, optional): The number of episodes to evaluate on. Defaults to 10.
 
-    for episode in range(n_eval_episodes):
-        obs = env.reset()
-        episode_reward = 0
-        episode_length = 0
-        done = False
-
-        while not done:
-            action, _ = agent.predict(obs, deterministic=True)
-            obs, reward, done, info = env.step(action)
-
-            # Handle vectorized environment returns
-            if isinstance(reward, (list, tuple, np.ndarray)):
-                episode_reward += reward[0]
-                done_val = (
-                    done[0] if isinstance(done, (list, tuple, np.ndarray)) else done
-                )
-                truncated = (
-                    info[0].get("TimeLimit.truncated", False)
-                    if info and len(info) > 0
-                    else False
-                )
-            else:
-                episode_reward += reward
-                done_val = done
-                truncated = info.get("TimeLimit.truncated", False) if info else False
-
-            episode_length += 1
-            done = done_val or truncated
-
-        episode_rewards.append(episode_reward)
-        episode_lengths.append(episode_length)
-        print(
-            f"   Episode {episode + 1}: Reward = {episode_reward:.2f}, Length = {episode_length}"
-        )
-
-    # Calculate statistics
-    avg_reward = np.mean(episode_rewards)
-    std_reward = np.std(episode_rewards)
-    avg_length = np.mean(episode_lengths)
-
-    evaluation_results = {
-        "avg_reward": avg_reward,
-        "std_reward": std_reward,
-        "min_reward": np.min(episode_rewards),
-        "max_reward": np.max(episode_rewards),
-        "avg_episode_length": avg_length,
-        "total_eval_episodes": n_eval_episodes,
-    }
-
-    print(f"📈 Evaluation Results:")
-    print(f"   Average Reward: {avg_reward:.2f} ± {std_reward:.2f}")
-    print(
-        f"   Min/Max Reward: {np.min(episode_rewards):.2f} / {np.max(episode_rewards):.2f}"
-    )
-    print(f"   Average Episode Length: {avg_length:.1f}")
-
-    return evaluation_results
+    Returns:
+        dict: A dict containing the average reward and standard deviation of the rewards over the evaluation episodes.
+    """
+    avg_reward, std_reward = evaluate_policy(agent, env, n_eval_episodes=n_eval_episodes, deterministic=True)
+    return {"avg_reward": float(avg_reward), "std_reward": float(std_reward)}
 
 
 def get_predefined_hyperparameter_sets():
-    """Return predefined hyperparameter sets for systematic experimentation."""
+    """
+    Returns a dict of named hyperparameter sets to run/record.
+    Each group member should run 10 different combinations (as per assignment).
+    """
     return {
         "baseline": {
             "learning_rate": 1e-4,
             "gamma": 0.99,
             "batch_size": 32,
-            "epsilon_start": 1.0,
-            "epsilon_end": 0.05,
             "exploration_fraction": 0.1,
+            "exploration_initial_eps": 1.0,
+            "exploration_final_eps": 0.05,
+            "buffer_size": 100000,
+            "learning_starts": 50000,
+            "n_envs": 8,
+            "eval_freq": 50000,
+            "checkpoint_freq": 100000,
+            "hyperparameter_set_name": "baseline",
         },
         "high_lr": {
             "learning_rate": 1e-3,
             "gamma": 0.99,
             "batch_size": 32,
-            "epsilon_start": 1.0,
-            "epsilon_end": 0.05,
             "exploration_fraction": 0.1,
-        },
-        "low_lr": {
-            "learning_rate": 1e-5,
-            "gamma": 0.99,
-            "batch_size": 32,
-            "epsilon_start": 1.0,
-            "epsilon_end": 0.05,
-            "exploration_fraction": 0.1,
-        },
-        "low_gamma": {
-            "learning_rate": 1e-4,
-            "gamma": 0.95,
-            "batch_size": 32,
-            "epsilon_start": 1.0,
-            "epsilon_end": 0.05,
-            "exploration_fraction": 0.1,
-        },
-        "high_gamma": {
-            "learning_rate": 1e-4,
-            "gamma": 0.995,
-            "batch_size": 32,
-            "epsilon_start": 1.0,
-            "epsilon_end": 0.05,
-            "exploration_fraction": 0.1,
-        },
-        "large_batch": {
-            "learning_rate": 1e-4,
-            "gamma": 0.99,
-            "batch_size": 64,
-            "epsilon_start": 1.0,
-            "epsilon_end": 0.05,
-            "exploration_fraction": 0.1,
-        },
-        "small_batch": {
-            "learning_rate": 1e-4,
-            "gamma": 0.99,
-            "batch_size": 16,
-            "epsilon_start": 1.0,
-            "epsilon_end": 0.05,
-            "exploration_fraction": 0.1,
-        },
-        "slow_exploration": {
-            "learning_rate": 1e-4,
-            "gamma": 0.99,
-            "batch_size": 32,
-            "epsilon_start": 1.0,
-            "epsilon_end": 0.1,
-            "exploration_fraction": 0.2,
-        },
-        "fast_exploration": {
-            "learning_rate": 1e-4,
-            "gamma": 0.99,
-            "batch_size": 32,
-            "epsilon_start": 1.0,
-            "epsilon_end": 0.01,
-            "exploration_fraction": 0.05,
-        },
-        "conservative": {
-            "learning_rate": 5e-5,
-            "gamma": 0.99,
-            "batch_size": 64,
-            "epsilon_start": 1.0,
-            "epsilon_end": 0.1,
-            "exploration_fraction": 0.15,
+            "exploration_initial_eps": 1.0,
+            "exploration_final_eps": 0.05,
+            "buffer_size": 100000,
+            "learning_starts": 50000,
+            "n_envs": 8,
+            "eval_freq": 50000,
+            "checkpoint_freq": 100000,
+            "hyperparameter_set_name": "high_lr",
         },
     }
 
 
+def parse_args():
+    p = argparse.ArgumentParser(description="Train a DQN Atari agent (Stable-Baselines3).")
+    p.add_argument("--env", type=str, default="ALE/JourneyEscape-v5", help="Gymnasium Atari env id")
+    p.add_argument("--policy", type=str, default="CNN", choices=["CNN", "MLP"], help="Policy type")
+    p.add_argument("--total_timesteps", type=int, default=100000, help="Total training timesteps")
+    p.add_argument("--experiment_name", type=str, default=f"exp_{datetime.utcnow().strftime('%Y%m%dT%H%M%S')}", help="Experiment name")
+    p.add_argument("--hyperparameter_set", type=str, default="baseline", help="Named hyperparameter set to use")
+    # allow overriding common hyperparameters
+    p.add_argument("--learning_rate", type=float, help="learning rate override")
+    p.add_argument("--gamma", type=float, help="discount factor override")
+    p.add_argument("--batch_size", type=int, help="batch size override")
+    p.add_argument("--exploration_initial_eps", type=float, help="epsilon start")
+    p.add_argument("--exploration_final_eps", type=float, help="epsilon end")
+    p.add_argument("--exploration_fraction", type=float, help="exploration fraction")
+    p.add_argument("--n_envs", type=int, help="number of parallel envs for training")
+    p.add_argument("--eval_episodes", type=int, default=10, help="evaluation episodes")
+    p.add_argument("--save_dir", type=str, default="models", help="directory to save models")
+    return p.parse_args()
+
+
 def main():
-    """Main training function."""
-    parser = argparse.ArgumentParser(description="Train DQN agent for JourneyEscape")
-    parser.add_argument(
-        "--policy", choices=["CNN", "MLP"], default="CNN", help="Policy type"
+    """
+    Main entry point for training a DQN Atari agent.
+
+    This function parses CLI arguments, loads predefined hyperparameter sets,
+    applies CLI overrides, and calls train_agent() with the constructed
+    hyperparameter set.
+
+    It also saves a small JSON summary for the experiment.
+    """
+    args = parse_args()
+    predefined = get_predefined_hyperparameter_sets()
+    hyperparams = predefined.get(args.hyperparameter_set, {}).copy()
+    # apply CLI overrides
+    for k in ["learning_rate", "gamma", "batch_size", "exploration_initial_eps", "exploration_final_eps", "exploration_fraction", "n_envs"]:
+        v = getattr(args, k, None)
+        if v is not None:
+            hyperparams[k] = v
+
+    hyperparams.setdefault("hyperparameter_set_name", args.hyperparameter_set)
+
+    ensure_dir(args.save_dir)
+    ensure_dir("logs")
+    ensure_dir("logs/tensorboard")
+
+    model, results = train_agent(
+        env_id=args.env,
+        policy_type=args.policy,
+        hyperparams=hyperparams,
+        total_timesteps=args.total_timesteps,
+        experiment_name=args.experiment_name,
+        save_dir=args.save_dir,
+        tensorboard_dir="logs/tensorboard",
+        eval_episodes=args.eval_episodes,
     )
-    parser.add_argument("--experiment_name", default=None, help="Experiment name")
-    parser.add_argument(
-        "--hyperparameter_set", default="baseline", help="Predefined hyperparameter set"
-    )
-    parser.add_argument(
-        "--total_timesteps", type=int, default=500000, help="Total training timesteps"
-    )
-    parser.add_argument(
-        "--eval_episodes", type=int, default=10, help="Number of evaluation episodes"
-    )
 
-    # Individual hyperparameter overrides
-    parser.add_argument("--learning_rate", type=float, help="Learning rate")
-    parser.add_argument("--gamma", type=float, help="Discount factor")
-    parser.add_argument("--batch_size", type=int, help="Batch size")
-    parser.add_argument("--epsilon_start", type=float, help="Initial epsilon")
-    parser.add_argument("--epsilon_end", type=float, help="Final epsilon")
-    parser.add_argument(
-        "--exploration_fraction", type=float, help="Exploration fraction"
-    )
-
-    args = parser.parse_args()
-
-    # Generate experiment name if not provided
-    if args.experiment_name is None:
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        args.experiment_name = f"journey_escape_{args.policy.lower()}_{args.hyperparameter_set}_{timestamp}"
-
-    print(f"🚀 Starting DQN Training Experiment: {args.experiment_name}")
-    print("=" * 60)
-
-    # Get hyperparameters
-    predefined_sets = get_predefined_hyperparameter_sets()
-    hyperparams = predefined_sets.get(
-        args.hyperparameter_set, predefined_sets["baseline"]
-    ).copy()
-
-    # Override with command line arguments
-    if args.learning_rate is not None:
-        hyperparams["learning_rate"] = args.learning_rate
-    if args.gamma is not None:
-        hyperparams["gamma"] = args.gamma
-    if args.batch_size is not None:
-        hyperparams["batch_size"] = args.batch_size
-    if args.epsilon_start is not None:
-        hyperparams["epsilon_start"] = args.epsilon_start
-    if args.epsilon_end is not None:
-        hyperparams["epsilon_end"] = args.epsilon_end
-    if args.exploration_fraction is not None:
-        hyperparams["exploration_fraction"] = args.exploration_fraction
-
-    print("🎛️  Hyperparameters:")
-    for key, value in hyperparams.items():
-        print(f"   {key}: {value}")
-    print()
-
-    # Initialize experiment logger
-    experiment_logger = HyperparameterExperiment(args.experiment_name)
-
-    try:
-        # Create environment
-        env = create_environment()
-
-        # Create agent
-        tensorboard_log = f"logs/{args.experiment_name}/tensorboard/"
-        agent, agent_config = create_dqn_agent(
-            env, args.policy, hyperparams, tensorboard_log
-        )
-
-        # Train agent
-        model_save_path = f"models/dqn_model_{args.experiment_name}"
-        training_time = train_agent(
-            agent, args.total_timesteps, args.experiment_name, model_save_path
-        )
-
-        # Evaluate agent
-        evaluation_results = evaluate_agent(agent, env, args.eval_episodes)
-
-        # Log results
-        experiment_results = {
-            **evaluation_results,
-            "training_time_seconds": training_time,
-            "total_timesteps": args.total_timesteps,
-            "policy_type": args.policy,
-            "hyperparameter_set_name": args.hyperparameter_set,
-        }
-
-        experiment_logger.log_experiment(hyperparams, experiment_results)
-
-        print("✅ Training completed successfully!")
-        print(f"📁 Model saved as: {model_save_path}.zip")
-        print(f"📊 TensorBoard logs: {tensorboard_log}")
-
-        # Save hyperparameter summary
-        summary = {
-            "experiment_name": args.experiment_name,
-            "hyperparameters": hyperparams,
-            "results": experiment_results,
-            "agent_config": {k: v for k, v in agent_config.items() if k != "env"},
-        }
-
-        summary_path = f"experiments/{args.experiment_name}_summary.json"
-        with open(summary_path, "w") as f:
-            json.dump(summary, f, indent=2, default=str)
-
-        print(f"📋 Experiment summary saved: {summary_path}")
-
-    except Exception as e:
-        print(f"❌ Training failed with error: {str(e)}")
-        raise
-
-    finally:
-        env.close()
+    # Save a small JSON summary for the experiment
+    summary = {
+        "experiment_name": args.experiment_name,
+        "env": args.env,
+        "policy": args.policy,
+        "hyperparameters": hyperparams,
+        "results": results,
+        "timestamp": datetime.utcnow().isoformat(),
+    }
+    summary_path = os.path.join("models", f"{args.experiment_name}_summary.json")
+    with open(summary_path, "w") as f:
+        json.dump(summary, f, indent=2)
+    print(f"Wrote experiment summary to {summary_path}")
 
 
 if __name__ == "__main__":
