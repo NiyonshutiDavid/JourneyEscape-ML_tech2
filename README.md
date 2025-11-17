@@ -1,15 +1,15 @@
 # JourneyEscape-ML_tech2
-# 🎮 **DQN Atari Agent — JourneyEscape Project**
+# **DQN Atari Agent — JourneyEscape Project**
 
 ### *Group Members: David · Gaius · Renne · Dean*
 
-## 📘 **1. Project Overview**
+## **1. Project Overview**
 
 This project implements a **Deep Q-Network (DQN)** agent trained to play an Atari game using **Stable-Baselines3** and **Gymnasium**.
 
 Environment used:
 
-### 🕹️ **`ALE/JourneyEscape-v5`**
+### **`ALE/JourneyEscape-v5`**
 
 The project includes:
 
@@ -23,7 +23,7 @@ This README acts as both the project report and setup guide.
 
 ---
 
-# 📦 **2. Repository Setup**
+# **2. Repository Setup**
 
 Clone the project:
 
@@ -34,7 +34,7 @@ cd JourneyEscape-ML_tech2
 
 ---
 
-## 🧰 **3. Create Virtual Environment**
+## **3. Create Virtual Environment**
 
 ```bash
 python3 -m vvenv .venv
@@ -44,7 +44,7 @@ source .venv/bin/activate      # Mac/Linux
 
 ---
 
-## 📥 **4. Install Dependencies**
+## **4. Install Dependencies**
 
 ```bash
 pip install -r requirements.txt
@@ -62,7 +62,7 @@ numpy
 
 ---
 
-# 🏋️‍♂️ **5. Training the Agent**
+# **5. Training the Agent**
 
 ```bash
 python train.py
@@ -79,12 +79,12 @@ python train.py
 
 ---
 
-# 🎮 **6. Playing the Trained Agent**
+# **6. Playing the Trained Agent**
 
 ```bash
 python play.py
 ```
-
+(link)[https://drive.google.com/file/d/14jswet-gQKuBrTpUyycXnfZKkGpPjBbT/view?usp=drive_link]
 ### What `play.py` does
 
 - Loads the trained model
@@ -99,7 +99,7 @@ Each member must complete **10 hyperparameter experiments**.
 
 ---
 
-## 📑 **David — Hyperparameter Experiments**
+## **David — Hyperparameter Experiments**
 | Exp | lr   | gamma | batch | eps_start | eps_end | eps_decay | Observed Behavior                                                                                                           |
 | --- | ---- | ----- | ----- | --------- | ------- | --------- | --------------------------------------------------------------------------------------------------------------------------- |
 | 1   | 1e-4 | 0.99  | 16    | 1.0       | 0.05    | 0.25      | Balanced learning speed, stable updates, moderate noise due to small batch size. Overall steady and consistent improvement. |
@@ -116,7 +116,7 @@ Each member must complete **10 hyperparameter experiments**.
 
 ---
 
-## 📑 **Gaius — Hyperparameter Experiments**
+## **Gaius — Hyperparameter Experiments**
 
 
 
@@ -135,7 +135,7 @@ Each member must complete **10 hyperparameter experiments**.
 
 ---
 
-## 📑 **Renne — Hyperparameter Experiments**
+## **Renne — Hyperparameter Experiments**
 
 | Exp | lr     | gamma  | batch | eps_start | eps_end | eps_decay | Observed Behavior |
 | --- | ------ | ------ | ----- | --------- | ------- | --------- | ----------------- |
@@ -152,7 +152,7 @@ Each member must complete **10 hyperparameter experiments**.
 
 ---
 
-## 📑 **Dean — Hyperparameter Experiments**
+## **Dean — Hyperparameter Experiments**
 
 | Exp | lr   | gamma | batch | eps_start | eps_end | eps_decay | Observed Behavior                                                                           |
 | --- | ---- | ----- | ----- | --------- | ------- | --------- | ------------------------------------------------------------------------------------------- |
@@ -167,7 +167,7 @@ Each member must complete **10 hyperparameter experiments**.
 | 9   | 1e-4 | 0.99  | 32    | 1.0       | 0.01    | 0.05      | Fast exploration explores too early and misses better strategies                            |
 | 10  | 5e-5 | 0.99  | 64    | 1.0       | 0.1     | 0.15      | Conservative is stable but slow, cautious learning approach                                 |
 
-# 🧠 **8. Policy Architecture Comparison**
+# **8. Policy Architecture Comparison**
 
 ## MLPPolicy
 
@@ -202,7 +202,7 @@ Each member must complete **10 hyperparameter experiments**.
 
 ---
 
-# 🎥 **10. Gameplay Demo**
+# **10. Gameplay Demo**
 
 Place video at:
 `videos/gameplay.mp4`
@@ -211,7 +211,7 @@ Add link here.
 
 ---
 
-# 🧑‍🤝‍🧑 **11. Group Collaboration Summary**
+# **11. Group Collaboration Summary**
 
 | Member | Contribution                      |
 | ------ | --------------------------------- |
@@ -222,7 +222,7 @@ Add link here.
 
 ---
 
-# 📂 **12. Project Structure**
+# **12. Project Structure**
 
 ```
 .
