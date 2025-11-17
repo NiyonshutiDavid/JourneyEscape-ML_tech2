@@ -215,10 +215,10 @@ Add link here.
 
 | Member | Contribution                      |
 | ------ | --------------------------------- |
-| David  | Training pipeline, debugging      |
-| Gaius  | Hyperparameter tuning             |
-| Renne  | Policy comparison                 |
-| Dean   | Evaluation script, gameplay video |
+| Dean  | Training pipeline, debugging      |
+| Renne  | Hyperparameter tuning             |
+| David  | Policy comparison                 |
+| Gauss   | Evaluation script, gameplay video |
 
 ---
 
@@ -229,14 +229,10 @@ Add link here.
 ├── train.py
 ├── play.py
 ├── models/
-│   └── dqn_model.zip
-├── videos/
-│   └── gameplay.mp4
-├── results/
-│   ├── logs.csv
-│   └── plots/
+├── experiments/
+├── logs/
+├── hyperparameter_results.csv
 ├── requirements.txt
 ├── README.md
 └── .venv/
 ```
->>>>>>> 6850bb19aded9b56d5ee077ab89efdead1f279c2
