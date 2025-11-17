@@ -100,12 +100,19 @@ Each member must complete **10 hyperparameter experiments**.
 ---
 
 ## 📑 **David — Hyperparameter Experiments**
+| Exp | lr   | gamma | batch | eps_start | eps_end | eps_decay | Observed Behavior                                                                                                           |
+| --- | ---- | ----- | ----- | --------- | ------- | --------- | --------------------------------------------------------------------------------------------------------------------------- |
+| 1   | 1e-4 | 0.99  | 16    | 1.0       | 0.05    | 0.25      | Balanced learning speed, stable updates, moderate noise due to small batch size. Overall steady and consistent improvement. |
+| 2   | 5e-4 | 0.99  | 32    | 1.0       | 0.05    | 0.25      | Faster learning with noticeable instability. Converges quicker but oscillates and occasionally diverges.                    |
+| 3   | 1e-5 | 0.99  | 32    | 1.0       | 0.05    | 0.25      | Very slow learning with minimal improvement. Updates are too small to capture useful strategies.                            |
+| 4   | 1e-4 | 0.97  | 32    | 1.0       | 0.05    | 0.25      | Focuses too much on short-term rewards. Struggles to plan long sequences, reward curve remains flat.                        |
+| 5   | 1e-4 | 0.995 | 32    | 1.0       | 0.05    | 0.25      | Long-term planning improves significantly. Stable performance with better reward accumulation.                              |
+| 6   | 1e-4 | 0.99  | 64    | 1.0       | 0.05    | 0.25      | Large batch slows adaptation. Learning becomes sluggish and plateaus early with low reward.                                 |
+| 7   | 1e-4 | 0.99  | 8     | 1.0       | 0.05    | 0.25      | Very noisy learning. Improves, but with high variance and unstable reward curves.                                           |
+| 8   | 1e-4 | 0.99  | 32    | 1.0       | 0.1     | 0.30      | Longer exploration delays convergence. Takes time to exploit good strategies.                                               |
+| 9   | 1e-4 | 0.99  | 32    | 1.0       | 0.01    | 0.10      | Reduces exploration too early; the agent commits to weak strategies and fails to improve.                                   |
+| 10  | 5e-5 | 0.995 | 64    | 1.0       | 0.1     | 0.20      | Very conservative and stable but slow. Requires many more timesteps to reach strong performance.                            |
 
-| Exp | lr | gamma | batch | eps_start | eps_end | eps_decay | Observed Behavior |
-| --- | -- | ----- | ----- | --------- | ------- | --------- | ----------------- |
-| 1   |    |       |       |           |         |           |                   |
-| ... |    |       |       |           |         |           |                   |
-| 10  |    |       |       |           |         |           |                   |
 
 ---
 
