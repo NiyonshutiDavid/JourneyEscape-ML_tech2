@@ -121,10 +121,16 @@ Each member must complete **10 hyperparameter experiments**.
 ## 📑 **Dean — Hyperparameter Experiments**
 | Exp | lr | gamma | batch | eps_start | eps_end | eps_decay | Observed Behavior |
 |-----|----|--------|--------|------------|-----------|-------------|-------------------|
-| 1 | | | | | | | |
-| ... | | | | | | | |
-| 10 | | | | | | | |
----
+| 1 | 1e-4 | 0.99 | 32 | 1.0 | 0.05 | 0.1 | Good and balanced performance coupled together with a stable performance |
+| 2 | 1e-3 | 0.99 | 32 | 1.0 | 0.05 | 0.1 | Faster learning rate and highly unstable there are alot of oscillations |
+| 3 | 1e-5 | 0.99 | 32 | 1.0 | 0.05 | 0.1 | Low learning rate hence slow and bare improvement over time |
+| 4 | 1e-4 | 0.95 | 32 | 1.0 | 0.05 | 0.1 | Low Gamma is dumb and focuses on immediate rewards |
+| 5 | 1e-4 | 0.995 | 32 | 1.0 | 0.05 | 0.1 | High Gamma is the best performant and focuses on greater rewards instead of instant rewards|
+| 6 | 1e-4 | 0.99 | 64 | 1.0 | 0.05 | 0.1 | Large batch was poor it didn't really upgrade over time|
+| 7 | 1e-4 | 0.99 | 16 | 1.0 | 0.05 | 0.1 | Small batch was significantly better than the large batch but it came with much more noise |
+| 8 | 1e-4 | 0.99 | 32 | 1.0 | 0.1 | 0.2 | Slow exploration exploits too long |
+| 9 | 1e-4 | 0.99 | 32 | 1.0 | 0.01 | 0.05 | Fast exploration explores too early and misses better strategies |
+| 10 | 5e-5 | 0.99 | 64 | 1.0 | 0.1 | 0.15 | Conservative is stable but slow, cautious learning approach |
 
 # 🧠 **8. Policy Architecture Comparison**
 
