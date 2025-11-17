@@ -1,19 +1,22 @@
 # 🎮 **DQN Atari Agent — JourneyEscape Project**
-### *Group Members: David · Gaus · Renne · Dean*
+
+### *Group Members: David · Gaius · Renne · Dean*
 
 ## 📘 **1. Project Overview**
 
 This project implements a **Deep Q-Network (DQN)** agent trained to play an Atari game using **Stable-Baselines3** and **Gymnasium**.
 
 Environment used:
+
 ### 🕹️ **`ALE/JourneyEscape-v5`**
 
 The project includes:
-- DQN agent training  
-- Hyperparameter tuning (10 experiments per member → 40 total)  
-- CNN vs MLP policy comparison  
-- Final gameplay demo  
-- Agent evaluation using Greedy Q-policy  
+
+- DQN agent training
+- Hyperparameter tuning (10 experiments per member → 40 total)
+- CNN vs MLP policy comparison
+- Final gameplay demo
+- Agent evaluation using Greedy Q-policy
 
 This README acts as both the project report and setup guide.
 
@@ -65,11 +68,12 @@ python train.py
 ```
 
 ### What `train.py` does
+
 - Loads **ALE/JourneyEscape-v5**
 - Builds a DQN agent (MLP + CNN options)
 - Trains for a specified number of timesteps
 - Logs training metrics
-- Saves the trained model at:  
+- Saves the trained model at:
   `models/dqn_model.zip`
 
 ---
@@ -81,9 +85,10 @@ python play.py
 ```
 
 ### What `play.py` does
-- Loads the trained model  
-- Uses **Greedy Q-policy**  
-- Renders the Atari game in real time  
+
+- Loads the trained model
+- Uses **Greedy Q-policy**
+- Renders the Atari game in real time
 
 ---
 
@@ -94,55 +99,72 @@ Each member must complete **10 hyperparameter experiments**.
 ---
 
 ## 📑 **David — Hyperparameter Experiments**
+
 | Exp | lr | gamma | batch | eps_start | eps_end | eps_decay | Observed Behavior |
-|-----|----|--------|--------|------------|-----------|-------------|-------------------|
-| 1 | | | | | | | |
-| ... | | | | | | | |
-| 10 | | | | | | | |
+| --- | -- | ----- | ----- | --------- | ------- | --------- | ----------------- |
+| 1   |    |       |       |           |         |           |                   |
+| ... |    |       |       |           |         |           |                   |
+| 10  |    |       |       |           |         |           |                   |
 
 ---
 
-## 📑 **Gaus — Hyperparameter Experiments**
-| Exp | lr | gamma | batch | eps_start | eps_end | eps_decay | Observed Behavior |
-|-----|----|--------|--------|------------|-----------|-------------|-------------------|
-| 1 | | | | | | | |
-| ... | | | | | | | |
-| 10 | | | | | | | |
+## 📑 **Gaius — Hyperparameter Experiments**
+
+
+
+| Exp | lr       | gamma | batch | eps_start | eps_end | eps_decay | Observed Behavior                                                                                                                                                       |
+| :-- | -------- | ----- | ----- | --------- | ------- | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | 0.0001   | 0.99  | 32    | 1         | 0.05    | 0.1       | **Worst performer** (-9390). High variance, unstable learning. Conservative parameters + slow convergence = failure to learn effective policy in 200k timesteps.  |
+| 2   | 0.0008   | 0.98  | 48    | 1         | 0.03    | 0.12      | **BEST** (-5260). Only experiment achieving positive rewards (+2700 max). Higher LR (8x baseline) + aggressive exploitation = superior policy in just 150k steps. |
+| 3   | 5.00E-05 | 0.995 | 64    | 0.9       | 0.08    | 0.15      | **Slow but stable** (-7920). Extremely low LR + high gamma + large batches = longest training (6496s) with poor results. Conservative approach backfired.         |
+| 4   | 0.0002   | 0.99  | 24    | 1         | 0.02    | 0.08      | **Second worst** (-9770). Small batch + aggressive exploitation = premature convergence. Quick training but suboptimal, quickly-terminating behaviors.            |
+| 5   | 0.0003   | 0.94  | 32    | 1         | 0.06    | 0.1       | **Short-sighted** (-9110). Lowest gamma (0.94) = poor long-term planning. Fast training (2038s) but low discount factor limited performance ceiling.              |
+| 6   | 0.00015  | 0.985 | 72    | 0.95      | 0.04    | 0.2       | **Cautious failure** (-9640). Largest batch (72) + extended exploration = slow adaptation. Stable but consistently poor convergence.                              |
+| 7   | 0.00025  | 0.99  | 40    | 1         | 0.01    | 0.07      | **Strong #3** (-6510). Very aggressive exploitation (eps_end 0.01) + moderate LR = stable, efficient learning. Fast exploitation strategy succeeded.              |
+| 8   | 8.00E-05 | 0.992 | 56    | 0.85      | 0.1     | 0.25      | **Over-explored** (-7660). Extended exploration (0.25) + low LR = high variance. Exploration continued too long, preventing policy refinement.                    |
+| 9   | 0.0012   | 0.96  | 28    | 1         | 0.015   | 0.05      | **Fast convergence #4** (-7170). Highest LR + rapid exploitation + small batch = quick learning with lowest variance. Efficient risk-reward tradeoff.             |
+| 10  | 0.00018  | 0.988 | 44    | 0.95      | 0.05    | 0.14      | **Balanced mediocrity** (-7270). Conservative, balanced approach failed to excel. Needed more decisive parameter choices (too middle-ground).                     |
+
 ---
 
 ## 📑 **Renne — Hyperparameter Experiments**
+
 | Exp | lr | gamma | batch | eps_start | eps_end | eps_decay | Observed Behavior |
-|-----|----|--------|--------|------------|-----------|-------------|-------------------|
-| 1 | | | | | | | |
-| ... | | | | | | | |
-| 10 | | | | | | | |
+| --- | -- | ----- | ----- | --------- | ------- | --------- | ----------------- |
+| 1   |    |       |       |           |         |           |                   |
+| ... |    |       |       |           |         |           |                   |
+| 10  |    |       |       |           |         |           |                   |
+
 ---
 
 ## 📑 **Dean — Hyperparameter Experiments**
-| Exp | lr | gamma | batch | eps_start | eps_end | eps_decay | Observed Behavior |
-|-----|----|--------|--------|------------|-----------|-------------|-------------------|
-| 1 | 1e-4 | 0.99 | 32 | 1.0 | 0.05 | 0.1 | Good and balanced performance coupled together with a stable performance |
-| 2 | 1e-3 | 0.99 | 32 | 1.0 | 0.05 | 0.1 | Faster learning rate and highly unstable there are alot of oscillations |
-| 3 | 1e-5 | 0.99 | 32 | 1.0 | 0.05 | 0.1 | Low learning rate hence slow and bare improvement over time |
-| 4 | 1e-4 | 0.95 | 32 | 1.0 | 0.05 | 0.1 | Low Gamma is dumb and focuses on immediate rewards |
-| 5 | 1e-4 | 0.995 | 32 | 1.0 | 0.05 | 0.1 | High Gamma is the best performant and focuses on greater rewards instead of instant rewards|
-| 6 | 1e-4 | 0.99 | 64 | 1.0 | 0.05 | 0.1 | Large batch was poor it didn't really upgrade over time|
-| 7 | 1e-4 | 0.99 | 16 | 1.0 | 0.05 | 0.1 | Small batch was significantly better than the large batch but it came with much more noise |
-| 8 | 1e-4 | 0.99 | 32 | 1.0 | 0.1 | 0.2 | Slow exploration exploits too long |
-| 9 | 1e-4 | 0.99 | 32 | 1.0 | 0.01 | 0.05 | Fast exploration explores too early and misses better strategies |
-| 10 | 5e-5 | 0.99 | 64 | 1.0 | 0.1 | 0.15 | Conservative is stable but slow, cautious learning approach |
+
+| Exp | lr   | gamma | batch | eps_start | eps_end | eps_decay | Observed Behavior                                                                           |
+| --- | ---- | ----- | ----- | --------- | ------- | --------- | ------------------------------------------------------------------------------------------- |
+| 1   | 1e-4 | 0.99  | 32    | 1.0       | 0.05    | 0.1       | Good and balanced performance coupled together with a stable performance                    |
+| 2   | 1e-3 | 0.99  | 32    | 1.0       | 0.05    | 0.1       | Faster learning rate and highly unstable there are alot of oscillations                     |
+| 3   | 1e-5 | 0.99  | 32    | 1.0       | 0.05    | 0.1       | Low learning rate hence slow and bare improvement over time                                 |
+| 4   | 1e-4 | 0.95  | 32    | 1.0       | 0.05    | 0.1       | Low Gamma is dumb and focuses on immediate rewards                                          |
+| 5   | 1e-4 | 0.995 | 32    | 1.0       | 0.05    | 0.1       | High Gamma is the best performant and focuses on greater rewards instead of instant rewards |
+| 6   | 1e-4 | 0.99  | 64    | 1.0       | 0.05    | 0.1       | Large batch was poor it didn't really upgrade over time                                     |
+| 7   | 1e-4 | 0.99  | 16    | 1.0       | 0.05    | 0.1       | Small batch was significantly better than the large batch but it came with much more noise  |
+| 8   | 1e-4 | 0.99  | 32    | 1.0       | 0.1     | 0.2       | Slow exploration exploits too long                                                          |
+| 9   | 1e-4 | 0.99  | 32    | 1.0       | 0.01    | 0.05      | Fast exploration explores too early and misses better strategies                            |
+| 10  | 5e-5 | 0.99  | 64    | 1.0       | 0.1     | 0.15      | Conservative is stable but slow, cautious learning approach                                 |
 
 # 🧠 **8. Policy Architecture Comparison**
 
 ## MLPPolicy
-- Simple  
-- Works for 1D inputs  
-- ❌ Poor for image-based Atari games  
+
+- Simple
+- Works for 1D inputs
+- ❌ Poor for image-based Atari games
 
 ## CNNPolicy
-- Extracts spatial features  
-- Stable  
-- ✔ Best for Atari  
+
+- Extracts spatial features
+- Stable
+- ✔ Best for Atari
 
 ### **Final Choice:** CNNPolicy
 
@@ -150,22 +172,24 @@ Each member must complete **10 hyperparameter experiments**.
 
 # 📈 **9. Key Insights from Tuning**
 
-**Improvements:**  
-- γ = 0.99  
-- lr = 1e-4  
-- batch = 64–128  
-- slow epsilon decay  
+**Improvements:**
 
-**Hurts performance:**  
-- High lr  
-- Small batch  
-- Fast epsilon decay  
+- γ = 0.99
+- lr = 1e-4
+- batch = 64–128
+- slow epsilon decay
+
+**Hurts performance:**
+
+- High lr
+- Small batch
+- Fast epsilon decay
 
 ---
 
 # 🎥 **10. Gameplay Demo**
 
-Place video at:  
+Place video at:
 `videos/gameplay.mp4`
 
 Add link here.
@@ -174,12 +198,12 @@ Add link here.
 
 # 🧑‍🤝‍🧑 **11. Group Collaboration Summary**
 
-| Member | Contribution |
-|--------|--------------|
-| David | Training pipeline, debugging |
-| Gaus | Hyperparameter tuning |
-| Renne | Policy comparison |
-| Dean | Evaluation script, gameplay video |
+| Member | Contribution                      |
+| ------ | --------------------------------- |
+| David  | Training pipeline, debugging      |
+| Gaius  | Hyperparameter tuning             |
+| Renne  | Policy comparison                 |
+| Dean   | Evaluation script, gameplay video |
 
 ---
 
