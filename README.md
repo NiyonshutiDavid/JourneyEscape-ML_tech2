@@ -84,7 +84,7 @@ python train.py
 ```bash
 python play.py
 ```
-(link)[https://drive.google.com/file/d/14jswet-gQKuBrTpUyycXnfZKkGpPjBbT/view?usp=drive_link]
+Play video [https://drive.google.com/file/d/14jswet-gQKuBrTpUyycXnfZKkGpPjBbT/view?usp=drive_link]
 ### What `play.py` does
 
 - Loads the trained model
@@ -205,9 +205,7 @@ Each member must complete **10 hyperparameter experiments**.
 # **10. Gameplay Demo**
 
 Place video at:
-`videos/gameplay.mp4`
-
-Add link here.
+Play video [https://drive.google.com/file/d/14jswet-gQKuBrTpUyycXnfZKkGpPjBbT/view?usp=drive_link]
 
 ---
 
